@@ -4,7 +4,7 @@
 # Bulk CD Ripping Automation
 #     by Shelby Jueden / Tech Tangents
 #
-# This scrpipt is designed to be used with a single or multiple CD-ROM 
+# This script is designed to be used with a single or multiple CD-ROM 
 # drives for ripping many discs in a single session with minimal user 
 # interaction. The script takes a single parameter that is a CSV file
 # containing a drive, filename, and text description of each disc to
@@ -54,7 +54,7 @@ rip_bincue () {
     #cd_driver="plextor" # Useful for older drives
 
     # Rip BIN
-    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --driver $cd_driver "$name".toc | tee -a rip-log.tx
+    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --driver $cd_driver "$name".toc 2>&1 | tee -a rip-log.txt
 
     # Generate CUE from TOC
     toc2cue "$name".toc "$name".cue
