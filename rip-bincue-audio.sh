@@ -222,7 +222,7 @@ do
     for (( session=sessions; session>0; session-- ))
     do
         if [[ "$sessions" != "1" ]] ; then
-            echo "Rippsing session $session/$sessions"
+            echo "Ripping session $session/$sessions"
             mkdir "$name-$session"
             cd "$name-$session"
         fi
