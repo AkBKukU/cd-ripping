@@ -31,11 +31,7 @@
 # use as an album name.
 # 
 # Required programs to use this script:
-# cdrdao
-# abcde
-# bchunk
-# flac
-# lame
+# cdrdao abcde bchunk flac lame p7zip
 
 # Rip output directory
 output="${2:-"$(pwd)"}"
@@ -57,7 +53,7 @@ rip_bincue () {
     #cd_driver="plextor" # Useful for older drives
 
     # Rip BIN
-    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a rip-log.txt
+    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a logs/rip-log.txt
 
     # Generate CUE from TOC
     toc2cue "$name".toc "$name".cue
@@ -68,10 +64,10 @@ cddb_get () {
     echo "Fetching CDDB info for [$name] from [$drive]"
     
     # Get disc ID to identify with cddb
-    cd-discid $drive > disc_id.txt
+    cd-discid $drive > logs/disc_id.txt
 
     # Run query to get possible genres
-    query="$(cddb-tool query "$cddb_server" 6 $(whoami) $(hostname) `cat disc_id.txt`)"
+    query="$(cddb-tool query "$cddb_server" 6 $(whoami) $(hostname) `cat logs/disc_id.txt`)"
     
     # If disc not in CDDB exit and return error code
     if [[ "$query" == *"202"* ]]; then
@@ -86,7 +82,7 @@ cddb_get () {
     fi
     
     # Get the cddb entry
-    cddb-tool read $cddb_server 6 $(whoami) $(hostname) $genre `cat disc_id.txt` > cddb.txt
+    cddb-tool read $cddb_server 6 $(whoami) $(hostname) $genre `cat logs/disc_id.txt` > logs/cddb.txt
 }
 
 # Parse CDDB info into global variables to use when encoding FLAC and MP3
@@ -94,7 +90,7 @@ cddb_parse () {
     echo "Parsing CDDB info for [$name] from [$drive]"
 
     # Load cddb entry
-    cddb="$(cat cddb.txt)"
+    cddb="$(cat logs/cddb.txt)"
 
     # Parse out album information
     dyear="$(echo "$cddb" | grep "DYEAR" | sed "s/DYEAR=//" | sed "s/\r//" | xargs)"
@@ -147,6 +143,28 @@ convert_audio_cddb () {
     # Create folders
     mkdir -p "flac/$(clean "$dartist")/$dyear - $(clean "$dalbum")" "mp3/$(clean "$dartist")/$dyear - $(clean "$dalbum")"
     
+    # Remove data tracks from CDDB titles
+    isos=(*.iso)
+    local tempttitles=()
+    for (( i=0; i<${#isos[@]}; i++ ))
+    do
+        # Match ISO track name to CDDB entry
+        datatrack="$(echo "${isos[$i]}" | sed 's/^track//g' | sed 's/^0*//g' | sed 's/\.iso//g' | xargs)"
+        datatrack=$((($datatrack - 1)))
+        echo "Data track [$datatrack] found with CDDB title \"${ttitle[$datatrack]}\" will be removed."
+        
+        # Remove the data track title
+        for (( i=0; i<${#ttitle[@]}; i++ ))
+        do
+            if [[ "$i" != "$datatrack" ]]
+            then
+                tempttitles+=("${ttitle[$i]}")
+            fi
+        done
+        ttitle=()
+        ttitle=("${tempttitles[@]}")
+    done
+    
     # Convert all WAVs to FLAC and MP3 with cddb info
     wavs=(*.wav)
     for (( i=0; i<${#wavs[@]}; i++ ))
@@ -173,6 +191,23 @@ convert_audio_cddb () {
             --ty "$dyear" \
             --tg "$dgenre"
         mv "${wavs[$i]%.wav}.mp3" "mp3/$(clean "$dartist")/$dyear - $(clean "$dalbum")/$num - $(clean "${ttitle[$i]}").mp3"
+    done
+}
+
+# Extract contents of ISO files to directory
+convert_iso () {
+    # Loop through all ISOs extracted
+    isos=(*.iso)
+    for (( i=0; i<${#isos[@]}; i++ ))
+    do
+        # Get ISO volume name
+        isoname="$(isoinfo -i "${isos[$i]}" -d | grep "Volume id" | sed 's/^Volume id.*://g' | xargs)"
+        mkdir "$isoname"
+        cd "$isoname"
+        7z x ../"${isos[$i]}"
+        cd ..
+        echo "mv ${isos[$i]} $isoname"
+        mv "${isos[$i]}" "$isoname".iso
     done
 }
 
@@ -212,15 +247,19 @@ do
     cd "$output"
     mkdir "$name"
     cd "$name"
-    echo "$fullname" >> description.txt
+    mkdir logs
+    echo "$fullname" > description.txt
     
     # Check for multiple sessions
-    sessions="$(cdrdao disk-info /dev/sr0 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
+    echo "finding sessions"
+    sessions="$(cdrdao disk-info $drive 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
     session="$sessions"
     
+    echo "sessions found: $sessions"
     # Rip all sessions
     for (( session=sessions; session>0; session-- ))
     do
+        echo "looping sessions"
         if [[ "$sessions" != "1" ]] ; then
             echo "Ripping session $session/$sessions"
             mkdir "$name-$session"
@@ -240,8 +279,8 @@ do
         rip_bincue
         
         # Convert files
-        mkdir contents
-        cd contents
+        mkdir content
+        cd content
         convert_bincue
         
         # Check for extracted audio and convert it
@@ -257,6 +296,9 @@ do
             # Remove converted WAVs
             rm *.wav
         fi
+        
+        # Get files out of data tracks
+        convert_iso
         
         cd ../..
     done
