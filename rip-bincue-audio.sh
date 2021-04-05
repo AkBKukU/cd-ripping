@@ -37,6 +37,9 @@
 # flac
 # lame
 
+# Rip output directory
+output="${2:-"$(pwd)"}"
+
 # CDDB server to use for metadata
 cddb_server="http://gnudb.gnudb.org/~cddb/cddb.cgi"
 
@@ -54,7 +57,7 @@ rip_bincue () {
     #cd_driver="plextor" # Useful for older drives
 
     # Rip BIN
-    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --driver $cd_driver "$name".toc 2>&1 | tee -a rip-log.txt
+    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a rip-log.txt
 
     # Generate CUE from TOC
     toc2cue "$name".toc "$name".cue
@@ -182,6 +185,11 @@ drives_used=()
 # Begin ripping loop
 while IFS="," read -r drive name fullname <&9
 do
+    # Trim input
+    drive="$(echo "$drive" | xargs)"
+    name="$(echo "$name" | xargs)"
+    fullname="$(echo "$fullname" | xargs)"
+    
     # Check if drive(s) needs new disc
     if [[ "${drives_used[@]}" =~ "$drive" ]]; then
         echo "---Old disc in [$drive]---"
@@ -201,46 +209,57 @@ do
     drives_used+=("$drive")
 
     # Prepare new directory for disc
+    cd "$output"
     mkdir "$name"
     cd "$name"
     echo "$fullname" >> description.txt
     
-    # CDDB information on disc
-    cddb_get
-    found=$?
-    if [[ "$found" == "202" ]] ; then
-        echo "No CDDB entry found"
-    else
-        cddb_parse
-    fi
+    # Check for multiple sessions
+    sessions="$(cdrdao disk-info /dev/sr0 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
+    session="$sessions"
     
-    # Rip BIN/CUE
-    rip_bincue
+    # Rip all sessions
+    for (( session=sessions; session>0; session-- ))
+    do
+        if [[ "$sessions" != "1" ]] ; then
+            echo "Rippsing session $session/$sessions"
+            mkdir "$name-$session"
+            cd "$name-$session"
+        fi
     
-    # Convert files
-    mkdir contents
-    cd contents
-    convert_bincue
-    
-    # Check for extracted audio and convert it
-    count=`ls -1 *.wav 2>/dev/null | wc -l`
-    if [ $count != 0 ]
-    then
+        # CDDB information on disc
+        cddb_get
+        found=$?
         if [[ "$found" == "202" ]] ; then
-            convert_audio
+            echo "No CDDB entry found"
         else
-            convert_audio_cddb
+            cddb_parse
         fi
         
-        # Remove converted WAVs
-        rm *.wav
-    fi
-    
-    # Leave contents
-    cd ..
-    
-    # Move on to next disc
-    cd ..
+        # Rip BIN/CUE
+        rip_bincue
+        
+        # Convert files
+        mkdir contents
+        cd contents
+        convert_bincue
+        
+        # Check for extracted audio and convert it
+        count=`ls -1 *.wav 2>/dev/null | wc -l`
+        if [ $count != 0 ]
+        then
+            if [[ "$found" == "202" ]] ; then
+                convert_audio
+            else
+                convert_audio_cddb
+            fi
+            
+            # Remove converted WAVs
+            rm *.wav
+        fi
+        
+        cd ../..
+    done
 
 done 9< <(cat $1)
 
