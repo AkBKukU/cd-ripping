@@ -39,6 +39,11 @@ output="${2:-"$(pwd)"}"
 # CDDB server to use for metadata
 cddb_server="http://gnudb.gnudb.org/~cddb/cddb.cgi"
 
+    
+# CD driver for cdrdao
+cd_driver="generic-mmc-raw:0x20000" # Most common driver
+#cd_driver="plextor" # Useful for older drives
+
 # String sanatization for path names
 clean () {
     echo "$1" | sed -e 's/[\/\\\&:\"<>\?\*|]/-/g'
@@ -47,10 +52,6 @@ clean () {
 # Rip BIN/CUE of current disc
 rip_bincue () {
     echo "Ripping [$name] from [$drive]"
-    
-    # CD driver for cdrdao
-    cd_driver="generic-mmc-raw" # Most common driver
-    #cd_driver="plextor" # Useful for older drives
 
     # Rip BIN
     cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a logs/rip-log.txt
@@ -108,7 +109,8 @@ cddb_parse () {
 
 # Extract ISO and WAVs from BIN/CUE file
 convert_bincue () {
-    bchunk -sw ../"$name".bin ../"$name".cue track
+    #bchunk -sw ../"$name".bin ../"$name".cue track # Use -s to swap audio byte order
+    bchunk -w ../"$name".bin ../"$name".cue track
 }
 
 # Convert WAVs to FLAC and MP3 without CDDB data
@@ -147,10 +149,10 @@ convert_audio_cddb () {
     isos=(*.iso)
     local tempttitles=()
     for (( i=0; i<${#isos[@]}; i++ ))
-    do
+    do       
         # Match ISO track name to CDDB entry
         datatrack="$(echo "${isos[$i]}" | sed 's/^track//g' | sed 's/^0*//g' | sed 's/\.iso//g' | xargs)"
-        datatrack=$((($datatrack - 1)))
+        datatrack="$(expr $datatrack - 1)"
         echo "Data track [$datatrack] found with CDDB title \"${ttitle[$datatrack]}\" will be removed."
         
         # Remove the data track title
@@ -202,9 +204,16 @@ convert_iso () {
     do
         # Get ISO volume name
         isoname="$(isoinfo -i "${isos[$i]}" -d | grep "Volume id" | sed 's/^Volume id.*://g' | xargs)"
+        
+        # Check for blank Valume id
+        if [[ "$isoname" == "" ]]
+        then
+            isoname="ISO-$i"
+        fi
+        
         mkdir "$isoname"
         cd "$isoname"
-        7z x ../"${isos[$i]}"
+        7z x ../"${isos[$i]}" | tee ../../logs/7zip.txt
         cd ..
         echo "mv ${isos[$i]} $isoname"
         mv "${isos[$i]}" "$isoname".iso
@@ -251,11 +260,16 @@ do
     echo "$fullname" > description.txt
     
     # Check for multiple sessions
-    echo "finding sessions"
-    sessions="$(cdrdao disk-info $drive 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
+    sessions="$(cdrdao disk-info --device $drive --driver $cd_driver 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
+
+    if [[ "$sessions" == "" ]]
+    then
+        echo "WARNING: Your CD drive may not support multiple sessions."
+        echo "         Defaulting to single session."
+        sessions=1
+    fi
     session="$sessions"
     
-    echo "sessions found: $sessions"
     # Rip all sessions
     for (( session=sessions; session>0; session-- ))
     do
