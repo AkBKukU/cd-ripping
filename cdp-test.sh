@@ -39,7 +39,8 @@ do
         index_count="$(expr $index_count + 1)"
     fi
 
-done 9< <(cat $1 | sed 's/START/INDEX/g')
+done 9< <(cat $toc)
+#done 9< <(cat $toc | sed 's/START/INDEX/g') # Will rip from [00:00.00] to START but causes issues with normal CDs
 
 
 
