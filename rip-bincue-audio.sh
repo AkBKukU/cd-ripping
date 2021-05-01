@@ -31,7 +31,7 @@
 # use as an album name.
 # 
 # Required programs to use this script:
-# cdrdao abcde bchunk flac lame p7zip
+# cdrdao abcde bchunk flac lame p7zip cueconvert
 
 # Rip output directory
 output="${2:-"$(pwd)"}"
@@ -54,21 +54,32 @@ rip_bincue () {
     echo "Ripping [$name] from [$drive]"
 
     # Rip BIN
-    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a logs/rip-log.txt
+    cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a $logs/rip-log.txt
 
     # Generate CUE from TOC
-    toc2cue "$name".toc "$name".cue
+    cueconvert "$name".toc > "$name".cue # Multiple index compatible but not great with some data CDs
+    result=$?
+    if [[ "$result" != "0" ]]
+    then
+        rm "$name".cue
+        toc2cue "$name".toc "$name".cue # Part of cdrdao but doesn't keep multiple track index listings
+    fi
+
 }
 
+# Get CDDB entry using rip with toc2cddb
+cddb_get_toc () {
+    return toc2cddb "$name".toc > $logs/cddb.txt
+}
 # Find and save CDDB entry for disc if available
 cddb_get () {
     echo "Fetching CDDB info for [$name] from [$drive]"
     
     # Get disc ID to identify with cddb
-    cd-discid $drive > logs/disc_id.txt
+    cd-discid $drive > $logs/disc_id.txt
 
     # Run query to get possible genres
-    query="$(cddb-tool query "$cddb_server" 6 $(whoami) $(hostname) `cat logs/disc_id.txt`)"
+    query="$(cddb-tool query "$cddb_server" 6 $(whoami) $(hostname) `cat $logs/disc_id.txt`)"
     
     # If disc not in CDDB exit and return error code
     if [[ "$query" == *"202"* ]]; then
@@ -83,7 +94,7 @@ cddb_get () {
     fi
     
     # Get the cddb entry
-    cddb-tool read $cddb_server 6 $(whoami) $(hostname) $genre `cat logs/disc_id.txt` > logs/cddb.txt
+    cddb-tool read $cddb_server 6 $(whoami) $(hostname) $genre `cat logs/disc_id.txt` > $logs/cddb.txt
 }
 
 # Parse CDDB info into global variables to use when encoding FLAC and MP3
@@ -91,7 +102,7 @@ cddb_parse () {
     echo "Parsing CDDB info for [$name] from [$drive]"
 
     # Load cddb entry
-    cddb="$(cat logs/cddb.txt)"
+    cddb="$(cat $logs/cddb.txt)"
 
     # Parse out album information
     dyear="$(echo "$cddb" | grep "DYEAR" | sed "s/DYEAR=//" | sed "s/\r//" | xargs)"
@@ -200,6 +211,14 @@ convert_audio_cddb () {
 convert_iso () {
     # Loop through all ISOs extracted
     isos=(*.iso)
+    
+    # Check that ISOs exist
+    if [[ "${isos[$i]}" == "*.iso" ]]
+    then 
+        return 0
+    fi
+    
+    # Extract ISOs
     for (( i=0; i<${#isos[@]}; i++ ))
     do
         # Get ISO volume name
@@ -213,7 +232,7 @@ convert_iso () {
         
         mkdir "$isoname"
         cd "$isoname"
-        7z x ../"${isos[$i]}" | tee ../../logs/7zip.txt
+        7z -y x ../"${isos[$i]}" | tee ../../$logs/7zip.txt
         cd ..
         echo "mv ${isos[$i]} $isoname"
         mv "${isos[$i]}" "$isoname".iso
@@ -233,6 +252,9 @@ do
     drive="$(echo "$drive" | xargs)"
     name="$(echo "$name" | xargs)"
     fullname="$(echo "$fullname" | xargs)"
+    
+    # Default log directory
+    logs="logs"
     
     # Check if drive(s) needs new disc
     if [[ "${drives_used[@]}" =~ "$drive" ]]; then
@@ -278,19 +300,28 @@ do
             echo "Ripping session $session/$sessions"
             mkdir "$name-$session"
             cd "$name-$session"
+            mkdir $logs
         fi
     
+        # Rip BIN/CUE
+        rip_bincue
+        
         # CDDB information on disc
-        cddb_get
+        cddb_get # Custom CDDB retreival
+        #cddb_get_toc # Cdrdao CDDB retreival
         found=$?
         if [[ "$found" == "202" ]] ; then
-            echo "No CDDB entry found"
+            echo "No CDDB entry found, attempting toc2cddb"
+            cddb_get_toc # Cdrdao CDDB retreival
+            result=$?
+            if [[ "$result" == "0" ]]
+            then
+                cddb_parse 
+                found="210"
+            fi
         else
             cddb_parse
         fi
-        
-        # Rip BIN/CUE
-        rip_bincue
         
         # Convert files
         mkdir content
