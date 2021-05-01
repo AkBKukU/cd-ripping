@@ -58,7 +58,7 @@ rip_bincue () {
     cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a $logs/rip-log.txt
 
     # Generate CUE from TOC
-    cueconvert "$name".toc > "$name".cue  2>&1 | tee -a $logs/cueconvert.txt # Multiple index compatible but not great with some data CDs(possibly all CD_ROM_XA discs)
+    cat "$name".toc | sed 's/#[0-9]* //g' | cueconvert - 1> "$name".cue  2> >(tee -a $logs/cueconvert.txt) # Multiple index compatible but not great with some data CDs(possibly all CD_ROM_XA discs)
     result=$?
     if [[ "$result" != "0" ]]
     then
