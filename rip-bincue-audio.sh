@@ -42,6 +42,7 @@ cddb_server="http://gnudb.gnudb.org/~cddb/cddb.cgi"
     
 # CD driver for cdrdao
 cd_driver="generic-mmc-raw:0x20000" # Most common driver
+#cd_driver="generic-mmc-raw" # Most common driver Byte Swapped
 #cd_driver="plextor" # Useful for older drives
 
 # String sanatization for path names
@@ -57,12 +58,12 @@ rip_bincue () {
     cdrdao read-cd --read-raw --datafile "$name".bin --device "$drive" --session $session --driver $cd_driver "$name".toc 2>&1 | tee -a $logs/rip-log.txt
 
     # Generate CUE from TOC
-    cueconvert "$name".toc > "$name".cue # Multiple index compatible but not great with some data CDs
+    cueconvert "$name".toc > "$name".cue  2>&1 | tee -a $logs/cueconvert.txt # Multiple index compatible but not great with some data CDs(possibly all CD_ROM_XA discs)
     result=$?
     if [[ "$result" != "0" ]]
     then
         rm "$name".cue
-        toc2cue "$name".toc "$name".cue # Part of cdrdao but doesn't keep multiple track index listings
+        toc2cue "$name".toc "$name".cue  2>&1 | tee -a $logs/toc2cue.txt # Part of cdrdao but doesn't keep multiple track index listings
     fi
 
 }
