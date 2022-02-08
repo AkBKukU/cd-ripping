@@ -206,8 +206,12 @@ convert_iso () {
     # Loop through all ISOs extracted
     isos=(*.iso)
     
+    echo "isos: $isos"
+    #echo "{isos[i]}: ${isos[$i]}"
+    isotest="$(echo $isos | grep \*)"
+    
     # Check that ISOs exist
-    if [[ "${isos[$i]}" == "*.iso" ]]
+    if [[ "$isotest" != "" ]]
     then 
         return 0
     fi
@@ -275,9 +279,27 @@ do
     mkdir logs
     echo "$fullname" > description.txt
     
+    # Check if DVD
+    dvd="$(blkid $drive | grep udf)"
+    if [[ "$dvd" != "" ]]
+    then
+        echo ""
+        echo "This disc is a DVD, an ISO will be created with ddrescue" | tee -a $logs/dvd.log
+        echo ""
+        blkid $drive | tee -a $logs/dvd.log
+        #dd if=$drive of=$name.iso  | tee -a $logs/dvd.log # Plain dd option
+        ddrescue -b 2048 -n -v $drive $name.iso $logs/ddrescue.log  | tee -a $logs/dvd.log
+        ddrescue -b 2048 -d -r 3 -v $drive $name.iso $logs/ddrescue.log  | tee -a $logs/dvd.log
+        ddrescue -b 2048 -d -R -r 3 -v $drive $name.iso $logs/ddrescue.log  | tee -a $logs/dvd.log
+    fi
+    
+    
     # Check for multiple sessions
-    sessions="$(cdrdao disk-info --device $drive --driver $cd_driver 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
-
+    if [[ "$dvd" == "" ]]; then
+        sessions="$(cdrdao disk-info --device $drive --driver $cd_driver 2>&1 | grep "Sessions" | sed 's/^Sessions.*://g' | xargs)"
+        echo "Sessions found: $sessions"
+    fi
+        
     if [[ "$sessions" == "" ]]
     then
         echo "WARNING: Your CD drive may not support multiple sessions."
@@ -298,48 +320,62 @@ do
         fi
     
         # Rip BIN/CUE
-        rip_bincue
+        if [[ "$dvd" == "" ]]; then
+            rip_bincue
+        fi
+        
         
         # CDDB information on disc
-        cddb_get # Custom CDDB retreival
-        #cddb_get_toc # Cdrdao CDDB retreival
-        found=$?
-        if [[ "$found" == "202" ]] ; then
-            echo "No CDDB entry found, attempting toc2cddb"
-            cddb_get_toc # Cdrdao CDDB retreival
-            result=$?
-            if [[ "$result" == "0" ]]
-            then
-                cddb_parse 
-                found="210"
+        if [[ "$dvd" == "" ]]; then
+            cddb_get # Custom CDDB retreival
+            #cddb_get_toc # Cdrdao CDDB retreival
+            found=$?
+            if [[ "$found" == "202" ]] ; then
+                echo "No CDDB entry found, attempting toc2cddb"
+                cddb_get_toc # Cdrdao CDDB retreival
+                result=$?
+                if [[ "$result" == "0" ]]
+                then
+                    cddb_parse 
+                    found="210"
+                fi
+            else
+                cddb_parse
             fi
-        else
-            cddb_parse
         fi
         
         # Convert files
-        mkdir content
-        cd content
-        convert_bincue
+        if [[ "$dvd" == "" ]]; then
+            mkdir content
+            cd content
+            convert_bincue
+        fi
         
         # Check for extracted audio and convert it
-        count=`ls -1 *.wav 2>/dev/null | wc -l`
-        if [ $count != 0 ]
-        then
-            if [[ "$found" == "202" ]] ; then
-                convert_audio
-            else
-                convert_audio_cddb
+        if [[ "$dvd" == "" ]]; then
+            count=`ls -1 *.wav 2>/dev/null | wc -l`
+            if [ $count != 0 ]
+            then
+                if [[ "$found" == "202" ]] ; then
+                    convert_audio
+                else
+                    convert_audio_cddb
+                fi
+                
+                # Remove converted WAVs
+                rm *.wav
             fi
-            
-            # Remove converted WAVs
-            rm *.wav
         fi
+        
         
         # Get files out of data tracks
         convert_iso
         
-        cd ../..
+        if [[ "$dvd" == "" ]]; then
+            cd ../..
+        else
+            cd ..
+        fi
     done
 
 done 9< <(cat $1)
