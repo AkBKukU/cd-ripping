@@ -31,7 +31,7 @@
 # use as an album name.
 # 
 # Required programs to use this script:
-# cdrdao abcde bchunk flac lame p7zip cueconvert
+# cdrdao abcde bchunk flac lame p7zip cueconvert ddrescue
 
 # Rip output directory
 output="${2:-"$(pwd)"}"
