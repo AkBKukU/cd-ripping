@@ -288,9 +288,9 @@ do
         echo ""
         blkid $drive | tee -a $logs/dvd.log
         #dd if=$drive of=$name.iso  | tee -a $logs/dvd.log # Plain dd option
-        ddrescue -b 2048 -n -v $drive $name.iso $logs/ddrescue.log  | tee -a $logs/dvd.log
-        ddrescue -b 2048 -d -r 3 -v $drive $name.iso $logs/ddrescue.log  | tee -a $logs/dvd.log
-        ddrescue -b 2048 -d -R -r 3 -v $drive $name.iso $logs/ddrescue.log  | tee -a $logs/dvd.log
+        ddrescue -b 2048 -n -v $drive $name.iso logfile  | tee -a $logs/dvd.log
+        ddrescue -b 2048 -d -r 3 -v $drive $name.iso logfile  | tee -a $logs/dvd.log
+        ddrescue -b 2048 -d -R -r 3 -v $drive $name.iso logfile  | tee -a $logs/dvd.log
     fi
     
     
