@@ -31,7 +31,7 @@
 # use as an album name.
 # 
 # Required programs to use this script:
-# cdrdao abcde bchunk flac lame p7zip cueconvert ddrescue
+# cdrdao abcde bchunk flac lame p7zip cuetools gddrescue 
 
 # Rip output directory
 output="${2:-"$(pwd)"}"
@@ -232,7 +232,7 @@ convert_iso () {
         cd "$isoname"
         7z -y x ../"${isos[$i]}" | tee ../../$logs/7zip.txt
         cd ..
-        echo "mv ${isos[$i]} $isoname"
+        echo "mv ${isos[$i]} $isoname.iso"
         mv "${isos[$i]}" "$isoname".iso
     done
 }
