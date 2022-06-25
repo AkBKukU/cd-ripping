@@ -31,7 +31,7 @@
 # use as an album name.
 # 
 # Required programs to use this script:
-# cdrdao abcde bchunk flac lame p7zip cuetools gddrescue 
+# cdrdao abcde bchunk flac lame p7zip cuetools gddrescue libcdio-utils
 
 # Rip output directory
 output="${2:-"$(pwd)"}"
@@ -278,6 +278,9 @@ do
     cd "$name"
     mkdir logs
     echo "$fullname" > description.txt
+    
+    # Log disc information
+    cd-info $drive | tee -a $logs/cd-info.log
     
     # Check if DVD
     dvd="$(blkid $drive | grep udf)"
