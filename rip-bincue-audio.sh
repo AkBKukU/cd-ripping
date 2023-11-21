@@ -283,7 +283,7 @@ do
     cd-info $drive | tee -a $logs/cd-info.log
     
     # Check if DVD
-    dvd="$(blkid $drive | grep udf)"
+    dvd="$(cat $logs/cd-info.log | grep "Disc mode is listed as: DVD-ROM")"
     if [[ "$dvd" != "" ]]
     then
         echo ""
