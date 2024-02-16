@@ -301,7 +301,7 @@ pregap () {
     pregap_max=375
 
     # If Track 1 is beyond the pregap limit, rip it to a wav
-    if [[ "$(echo "$track" | awk '{print $4}')" > "$pregam_max" ]]
+    if [[ "$(echo "$track" | awk '{print $4}')" > "$pregap_max" ]]
     then
         cdparanoia -t -"$(echo "$track" | awk '{print $4}')" "1[0.0]-1$(echo "$track" | awk '{print $5}')" pregap.wav
     fi
