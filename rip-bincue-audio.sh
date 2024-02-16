@@ -123,6 +123,29 @@ convert_audio () {
     # Create folders
     mkdir -p "flac/$(clean "$description")" "mp3/$(clean "$description")"
 
+    # If pregap track exists convert it first
+    if [[ -e "pregap.wav" ]]
+    then
+        # Set track number to 00
+        num=00
+
+        # Rip FLAC
+        flac pregap.wav \
+            --tag=ALBUM="$description" \
+            --tag=TITLE="Pre-gap" \
+            --tag=TRACKNUMBER="0"
+        mv "pregap.wav.flac" "flac/$(clean "$description")/$num - Pre-gap.flac"
+
+        # Rip MP3
+        lame -b 320 pregap.wav \
+            --tl "$description" \
+            --tt "Pre-gap" \
+            --tn "0"
+        mv "pregap.wav.mp3" "mp3/$(clean "$description")/$num - Pre-gap.mp3"
+
+        rm pregap.wav
+    fi
+
     # Convert all WAVs to FLAC and MP3 using CSV info
     wavs=(*.wav)
     for (( i=0; i<${#wavs[@]}; i++ ))
@@ -171,6 +194,36 @@ convert_audio_cddb () {
         ttitle=()
         ttitle=("${tempttitles[@]}")
     done
+
+
+    # If pregap track exists convert it first
+    if [[ -e "pregap.wav" ]]
+    then
+        # Set track number to 00
+        num=00
+
+        # Rip FLAC
+        flac "pregap.wav" \
+            --tag=ALBUM="$dalbum" \
+            --tag=ARTIST="$dartist" \
+            --tag=TITLE="Pre-gap" \
+            --tag=TRACKNUMBER="0" \
+            --tag=DATE="$dyear" \
+            --tag=GENRE="$dgenre"
+        mv "pregap.flac" "flac/$(clean "$dartist")/$dyear - $(clean "$dalbum")/$num - Pre-gap.flac"
+
+        # Rip MP3
+        lame -b 320 "pregap.wav" \
+            --tl "$dalbum" \
+            --ta "$dartist" \
+            --tt "Pre-gap" \
+            --tn "0" \
+            --ty "$dyear" \
+            --tg "$dgenre"
+        mv "pregap.mp3" "mp3/$(clean "$dartist")/$dyear - $(clean "$dalbum")/$num - Pre-gap.mp3"
+
+        rm pregap.wav
+    fi
     
     # Convert all WAVs to FLAC and MP3 with cddb info
     wavs=(*.wav)
@@ -235,6 +288,23 @@ convert_iso () {
         echo "mv ${isos[$i]} $isoname.iso"
         mv "${isos[$i]}" "$isoname".iso
     done
+}
+
+# Check for Pre-gap track and rip it if exists
+pregap () {
+    # Get the first track information on the disc
+    track="$(cdparanoia -Q 2>&1 | tee | grep " 1. ")"
+
+    # Pregap assumption point
+    # NOTE: This value is the number of frames Track 1 is offset from the start of the disc.
+    # There are 75 frames per second, this is a 5 second limit.
+    pregap_max=375
+
+    # If Track 1 is beyond the pregap limit, rip it to a wav
+    if [[ "$(echo "$track" | awk '{print $4}')" > "$pregam_max" ]]
+    then
+        cdparanoia -t -"$(echo "$track" | awk '{print $4}')" "1[0.0]-1$(echo "$track" | awk '{print $5}')" pregap.wav
+    fi
 }
 
 # Track script runtime
@@ -324,7 +394,8 @@ do
     
         # Rip BIN/CUE
         if [[ "$dvd" == "" ]]; then
-            rip_bincue
+           rip_bincue
+           echo "hi"
         fi
         
         
@@ -352,6 +423,7 @@ do
             mkdir content
             cd content
             convert_bincue
+            pregap # Works off of disc, not BIN/CUE
         fi
         
         # Check for extracted audio and convert it
