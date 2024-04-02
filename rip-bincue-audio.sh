@@ -70,7 +70,10 @@ cddb_get () {
     echo "Fetching CDDB info for [$name] from [$drive]"
     
     # Get disc ID to identify with cddb
-    cd-discid $drive > $logs/disc_id.txt
+    if [[ ! -e $logs/disc_id.txt ]]
+    then
+	cd-discid $drive > $logs/disc_id.txt
+    fi
 
     # Run query to get possible genres
     query="$(cddb-tool query "$cddb_server" 6 $(whoami) $(hostname) `cat $logs/disc_id.txt`)"
@@ -93,22 +96,43 @@ cddb_get () {
 
 # Parse CDDB info into global variables to use when encoding FLAC and MP3
 cddb_parse () {
-    echo "Parsing CDDB info for [$name] from [$drive]"
+	echo "Parsing CDDB info for [$name] from [$drive]"
 
-    # Load cddb entry
-    cddb="$(cat $logs/cddb.txt)"
+	# Load cddb entry
+	cddb="$(cat $logs/cddb.txt)"
 
-    # Parse out album information
-    dyear="$(echo "$cddb" | grep "DYEAR" | sed "s/DYEAR=//" | sed "s/\r//" | xargs)"
-    dgenre="$(echo "$cddb" | grep "DGENRE" | sed "s/DGENRE=//" | sed "s/\r//" | xargs)"
-    dalbum="$(echo "$cddb" | grep "DTITLE" | sed "s/DTITLE=//" | sed "s/\r//" | sed "s|.* / ||" | xargs)"
-    dartist="$(echo "$cddb" | grep "DTITLE" | sed "s/DTITLE=//" | sed "s/\r//" | sed "s| / .*||" | xargs)"
-    ttitles="$(echo "$cddb" | grep "TTITLE" | sed "s/TTITLE.*=//")"
-    
-    # Process track titles into array
-    SAVEIFS=$IFS   # Save current IFS
-    IFS=$'\n\r'      # Change IFS to new line
-    ttitle=($ttitles) # split to array $names
+	# Parse out album information
+	dyear="$(echo "$cddb" | grep "DYEAR" | sed "s/DYEAR=//" | sed "s/\r//" | xargs)"
+	dgenre="$(echo "$cddb" | grep "DGENRE" | sed "s/DGENRE=//" | sed "s/\r//" | xargs)"
+	dalbum="$(echo "$cddb" | grep "DTITLE" | sed "s/DTITLE=//" | sed "s/\r//" | sed "s|.* / ||" | xargs)"
+	dartist="$(echo "$cddb" | grep "DTITLE" | sed "s/DTITLE=//" | sed "s/\r//" | sed "s| / .*||" | xargs)"
+	ttitles_split="$(echo "$cddb" | grep "TTITLE" )"
+
+
+	# Process track titles into array
+	SAVEIFS=$IFS   # Save current IFS
+	IFS=$'\n\r'      # Change IFS to new line
+	ttitle_split=($ttitles_split) # split to array $names
+	ttitle=()
+
+	# Unsplit titles
+	lasttitle=""
+	echo "$dyear - $album : by $dartist"
+	for (( i=0; i<${#ttitle_split[@]}; i++ ))
+	do
+		# Check if previous title matches current
+		if [[ "$lasttitle" == "$(echo "${ttitle_split[$i]}" | sed "s/=.*//")" ]]
+		then
+			echo "Appending [$lasttitle]"
+			ttitle[-1]="${ttitle[-1]}$(echo "${ttitle_split[$i]}" | sed "s/TTITLE.*=//")"
+		else
+			lasttitle="$(echo "${ttitle_split[$i]}" | sed "s/=.*//")"
+			ttitle+=("$(echo "${ttitle_split[$i]}" | sed "s/TTITLE.*=//")")
+			echo "Changing title [$lasttitle]"
+		fi
+	done
+
+
     IFS=$SAVEIFS   # Restore IFS
 }
 
@@ -298,11 +322,12 @@ pregap () {
     # Pregap assumption point
     # NOTE: This value is the number of frames Track 1 is offset from the start of the disc.
     # There are 75 frames per second, this is a 5 second limit.
-    pregap_max=375
+    pregap_max="375"
 
     # If Track 1 is beyond the pregap limit, rip it to a wav
     if [[ "$(echo "$track" | awk '{print $4}')" > "$pregap_max" ]]
     then
+        echo "$(echo "$track" | awk '{print $4}') > $pregap_max"
         cdparanoia -t -"$(echo "$track" | awk '{print $4}')" "1[0.0]-1$(echo "$track" | awk '{print $5}')" pregap.wav
     fi
 }
