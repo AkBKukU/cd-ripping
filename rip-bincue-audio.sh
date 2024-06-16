@@ -228,12 +228,12 @@ convert_iso () {
             isoname="ISO-$i"
         fi
         
-        mkdir "$isoname"
-        cd "$isoname"
-        7z -y x ../"${isos[$i]}" | tee ../../$logs/7zip.txt
-        cd ..
         echo "mv ${isos[$i]} $isoname.iso"
         mv "${isos[$i]}" "$isoname".iso
+        mkdir "$isoname"
+        cd "$isoname"
+        (timeout 20m 7z -y x ../"$isoname".iso | tee ../../$logs/7zip.txt &)
+        cd ..
     done
 }
 
@@ -246,6 +246,12 @@ drives_used=()
 # Begin ripping loop
 while IFS="," read -r drive name fullname <&9
 do
+    if [[ "$drive" == "" ]]
+    then
+        echo "Empty line, ending"
+        exit 0
+    fi
+
     # Trim input
     drive="$(echo "$drive" | xargs)"
     name="$(echo "$name" | xargs)"
@@ -289,11 +295,13 @@ do
         echo ""
         echo "This disc is a DVD, an ISO will be created with ddrescue" | tee -a $logs/dvd.log
         echo ""
-        blkid $drive | tee -a $logs/dvd.log
+        mkdir content
+        cd content
+        blkid $drive | tee -a ../$logs/dvd-blkid.log
         #dd if=$drive of=$name.iso  | tee -a $logs/dvd.log # Plain dd option
-        ddrescue -b 2048 -n -v $drive $name.iso logfile  | tee -a $logs/dvd.log
-        ddrescue -b 2048 -d -r 3 -v $drive $name.iso logfile  | tee -a $logs/dvd.log
-        ddrescue -b 2048 -d -R -r 3 -v $drive $name.iso logfile  | tee -a $logs/dvd.log
+        ddrescue -b 2048 -n -v $drive $name.iso mapfile  | tee -a ../$logs/dvd-ddrescue.log
+        ddrescue -b 2048 -d -r 3 -v $drive $name.iso mapfile  | tee -a ../$logs/dvd-ddrescue.log
+        ddrescue -b 2048 -d -R -r 3 -v $drive $name.iso mapfile  | tee -a ../$logs/dvd-ddrescue.log
     fi
     
     
@@ -373,13 +381,13 @@ do
         
         # Get files out of data tracks
         convert_iso
-        
-        if [[ "$dvd" == "" ]]; then
-            cd ../..
-        else
-            cd ..
-        fi
+
+        # Next Session
+        cd ..
+
     done
+    # Next Disc
+    cd ..
 
 done 9< <(cat $1)
 
